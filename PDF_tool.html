@@ -1,0 +1,917 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF分割・結合ツール | PDF Splitter & Merger</title>
+    <!-- Tailwind CSS (Styling) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Material Icons -->
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+    <!-- Google Fonts (Roboto) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <!-- pdf-lib (PDF processing in browser) -->
+    <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        // 落ち着いたマテリアル3調のブルーグレーカラーパレット
+                        primary: {
+                            50: '#f0f4f8',
+                            100: '#dbe3ec',
+                            200: '#bdcbdc',
+                            300: '#90a8c5',
+                            400: '#5e81aa',
+                            500: '#3b5e8c', // メイン：落ち着いたダークブルー
+                            600: '#2e4971',
+                            700: '#263b5d',
+                            800: '#21324e',
+                            900: '#1e2b42',
+                        },
+                        neutral: {
+                            50: '#fafafa',
+                            100: '#f4f4f5',
+                            200: '#e4e4e7',
+                            300: '#d4d4d8',
+                            400: '#a1a1aa',
+                            500: '#71717a',
+                            600: '#52525b',
+                            700: '#3f3f46',
+                            800: '#27272a',
+                            900: '#18181b',
+                        },
+                    },
+                    fontFamily: {
+                        sans: ['Roboto', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* カスタムスクロールバー */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+    </style>
+</head>
+<body class="bg-neutral-50 text-neutral-800 min-h-screen flex flex-col antialiased font-sans">
+
+    <!-- ヘッダー -->
+    <header class="bg-white border-b border-neutral-200 py-4 px-6 sticky top-0 z-20 shadow-sm">
+        <div class="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div class="flex items-center space-x-3">
+                <div class="bg-primary-500 text-white p-2 rounded-xl flex items-center justify-center shadow-md shadow-primary-200">
+                    <span class="material-icons-round text-2xl">picture_as_pdf</span>
+                </div>
+                <div>
+                    <h1 class="text-xl font-semibold tracking-tight text-neutral-800">PDF便利ツール</h1>
+                    <p class="text-xs text-neutral-500">安全なブラウザ内完全ローカル処理</p>
+                </div>
+            </div>
+            
+            <!-- タブ切り替えボタン -->
+            <div class="bg-neutral-100 p-1 rounded-xl flex space-x-1 border border-neutral-200">
+                <button id="tabSplitBtn" class="px-5 py-2 text-sm font-medium rounded-lg transition-all flex items-center space-x-1 bg-white text-primary-700 shadow-sm">
+                    <span class="material-icons-round text-base">content_cut</span>
+                    <span>PDF分割</span>
+                </button>
+                <button id="tabMergeBtn" class="px-5 py-2 text-sm font-medium rounded-lg transition-all flex items-center space-x-1 text-neutral-600 hover:text-neutral-800 hover:bg-neutral-200/50">
+                    <span class="material-icons-round text-base">call_merge</span>
+                    <span>PDF結合</span>
+                </button>
+            </div>
+
+            <div class="hidden md:flex items-center space-x-2 text-xs bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-full font-medium">
+                <span class="material-icons-round text-sm">security</span>
+                <span>外部サーバーにファイルを送信しません</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- メインコンテンツ -->
+    <main class="flex-grow max-w-5xl w-full mx-auto p-4 sm:p-6 lg:p-8 flex flex-col justify-start">
+        
+        <!-- 共通メッセージコンテナ (エラー・警告・成功など) -->
+        <div id="messageContainer" class="mb-6 hidden">
+            <div id="messageBox" class="p-4 rounded-xl flex items-start space-x-3 text-sm">
+                <span id="messageIcon" class="material-icons-round mt-0.5">info</span>
+                <div class="flex-grow">
+                    <p id="messageText" class="font-medium"></p>
+                </div>
+                <button onclick="closeMessage()" class="text-neutral-400 hover:text-neutral-600">
+                    <span class="material-icons-round text-base">close</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- ==================== 1. 分割セクション ==================== -->
+        <div id="splitSection" class="space-y-6">
+            <!-- アップロード -->
+            <div id="splitUploadArea" class="bg-white rounded-2xl border-2 border-dashed border-neutral-300 hover:border-primary-400 p-8 sm:p-12 text-center cursor-pointer transition-colors relative group shadow-sm">
+                <input type="file" id="splitFileInput" accept="application/pdf" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                <div class="flex flex-col items-center justify-center space-y-4">
+                    <div class="w-16 h-16 rounded-full bg-neutral-100 flex items-center justify-center text-neutral-400 group-hover:bg-primary-50 group-hover:text-primary-500 transition-colors">
+                        <span class="material-icons-round text-4xl">cloud_upload</span>
+                    </div>
+                    <div>
+                        <p class="text-lg font-medium text-neutral-700 group-hover:text-primary-600 transition-colors">分割するPDFファイルをドラッグ＆ドロップ</p>
+                        <p class="text-sm text-neutral-400 mt-1">または、ここをクリックしてファイルを選択</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ワークプレイス (ファイル選択後に表示) -->
+            <div id="splitWorkArea" class="hidden grid grid-cols-1 lg:grid-cols-3 gap-6 transition-all">
+                <!-- 左側：ファイル情報 -->
+                <div class="lg:col-span-1 space-y-6">
+                    <div class="bg-white rounded-2xl border border-neutral-200 p-5 shadow-sm space-y-4">
+                        <div class="flex items-center justify-between">
+                            <h3 class="font-semibold text-neutral-700 flex items-center">
+                                <span class="material-icons-round text-primary-500 mr-2 text-lg">info</span>ファイル情報
+                            </h3>
+                            <button id="splitResetBtn" class="text-xs text-red-500 hover:text-red-700 font-medium flex items-center space-x-1 py-1 px-2 hover:bg-red-50 rounded-lg transition-colors">
+                                <span class="material-icons-round text-sm">delete</span>
+                                <span>変更する</span>
+                            </button>
+                        </div>
+                        
+                        <div class="bg-neutral-50 rounded-xl p-4 space-y-3 text-sm">
+                            <div class="flex flex-col">
+                                <span class="text-xs text-neutral-400 font-medium">ファイル名</span>
+                                <span id="splitFileName" class="font-semibold text-neutral-700 break-all">-</span>
+                            </div>
+                            <div class="grid grid-cols-2 gap-4 pt-2 border-t border-neutral-200">
+                                <div class="flex flex-col">
+                                    <span class="text-xs text-neutral-400 font-medium">総ページ数</span>
+                                    <span id="splitTotalPages" class="text-lg font-bold text-primary-500">0</span>
+                                </div>
+                                <div class="flex flex-col">
+                                    <span class="text-xs text-neutral-400 font-medium">ファイルサイズ</span>
+                                    <span id="splitFileSize" class="font-medium text-neutral-600">-</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 右側：分割の設定 & 実行 -->
+                <div class="lg:col-span-2 space-y-6">
+                    <div class="bg-white rounded-2xl border border-neutral-200 p-6 shadow-sm space-y-6">
+                        <h3 class="font-semibold text-neutral-700 text-lg flex items-center border-b border-neutral-100 pb-3">
+                            <span class="material-icons-round text-primary-500 mr-2">call_split</span>分割方法の選択
+                        </h3>
+
+                        <!-- ラジオグループ: 分割モード -->
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <!-- オプション1: 1ページずつ分割 -->
+                            <label class="relative flex flex-col p-4 bg-white border border-neutral-200 rounded-xl cursor-pointer hover:bg-neutral-50 transition-all select-none group has-[:checked]:border-primary-500 has-[:checked]:bg-primary-50/30">
+                                <input type="radio" name="splitMode" value="every" checked class="sr-only peer" />
+                                <div class="flex items-center justify-between mb-2">
+                                    <div class="flex items-center space-x-3">
+                                        <span class="material-icons-round text-neutral-400 peer-checked:text-primary-500 group-[.has-[:checked]]:text-primary-500">filter_1</span>
+                                        <span class="font-medium text-neutral-700">1ページずつすべて分割</span>
+                                    </div>
+                                    <div class="w-5 h-5 rounded-full border-2 border-neutral-300 flex items-center justify-center group-[.has-[:checked]]:border-primary-500">
+                                        <div class="w-2.5 h-2.5 rounded-full bg-primary-500 hidden group-[.has-[:checked]]:block"></div>
+                                    </div>
+                                </div>
+                                <span class="text-xs text-neutral-400 leading-relaxed ml-8">
+                                    すべてのページをそれぞれ独立した1ページのPDFファイルに変換し、まとめて保存します。
+                                </span>
+                            </label>
+
+                            <!-- オプション2: 範囲指定分割 -->
+                            <label class="relative flex flex-col p-4 bg-white border border-neutral-200 rounded-xl cursor-pointer hover:bg-neutral-50 transition-all select-none group has-[:checked]:border-primary-500 has-[:checked]:bg-primary-50/30">
+                                <input type="radio" name="splitMode" value="range" class="sr-only peer" />
+                                <div class="flex items-center justify-between mb-2">
+                                    <div class="flex items-center space-x-3">
+                                        <span class="material-icons-round text-neutral-400 group-[.has-[:checked]]:text-primary-500">date_range</span>
+                                        <span class="font-medium text-neutral-700">範囲を指定して分割</span>
+                                    </div>
+                                    <div class="w-5 h-5 rounded-full border-2 border-neutral-300 flex items-center justify-center group-[.has-[:checked]]:border-primary-500">
+                                        <div class="w-2.5 h-2.5 rounded-full bg-primary-500 hidden group-[.has-[:checked]]:block"></div>
+                                    </div>
+                                </div>
+                                <span class="text-xs text-neutral-400 leading-relaxed ml-8">
+                                    指定したページのみを抽出した、新しい1つのPDFを作成します。
+                                </span>
+                            </label>
+                        </div>
+
+                        <!-- 範囲指定入力エリア -->
+                        <div id="rangeInputContainer" class="hidden space-y-4 bg-neutral-50 p-4 rounded-xl border border-neutral-200 transition-all">
+                            <div class="flex flex-col space-y-2">
+                                <label for="rangeInput" class="text-sm font-medium text-neutral-600 flex items-center">
+                                    ページ範囲を指定してください
+                                </label>
+                                <input type="text" id="rangeInput" placeholder="例: 1-3, 5, 7-10" 
+                                    class="w-full px-4 py-3 rounded-xl border border-neutral-300 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white shadow-sm font-mono text-sm placeholder-neutral-400" />
+                            </div>
+                            <div class="text-xs text-neutral-500 space-y-1">
+                                <p class="flex items-center"><span class="material-icons-round text-sm mr-1">info</span><strong>書き方のルール:</strong></p>
+                                <ul class="list-disc pl-5 space-y-0.5">
+                                    <li>範囲指定: <code class="bg-neutral-200 px-1 rounded font-mono">1-5</code> （1ページから5ページまで）</li>
+                                    <li>単一指定: <code class="bg-neutral-200 px-1 rounded font-mono">3</code> （3ページ目のみ）</li>
+                                    <li>カンマ区切りで複数指定が可能です: <code class="bg-neutral-200 px-1 rounded font-mono">1-3, 5, 8</code></li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <!-- 実行ボタン & 進捗表示 -->
+                        <div class="pt-2">
+                            <button id="splitProcessBtn" class="w-full bg-primary-500 hover:bg-primary-600 text-white font-medium py-3 px-6 rounded-xl shadow-md shadow-primary-100 hover:shadow-lg hover:shadow-primary-200 transition-all flex items-center justify-center space-x-2 text-base">
+                                <span class="material-icons-round">content_cut</span>
+                                <span id="splitBtnText">PDFを分割・保存する</span>
+                            </button>
+
+                            <!-- 分割プログレスバー -->
+                            <div id="splitProgressContainer" class="hidden mt-4 space-y-2">
+                                <div class="flex justify-between items-center text-xs font-semibold text-neutral-500">
+                                    <span id="splitProgressText">処理を準備中...</span>
+                                    <span id="splitProgressPercent">0%</span>
+                                </div>
+                                <div class="w-full bg-neutral-200 h-2 rounded-full overflow-hidden">
+                                    <div id="splitProgressBar" class="bg-primary-500 h-full rounded-full transition-all duration-300 w-0"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
+        <!-- ==================== 2. 結合セクション ==================== -->
+        <div id="mergeSection" class="space-y-6 hidden">
+            <!-- アップロード -->
+            <div id="mergeUploadArea" class="bg-white rounded-2xl border-2 border-dashed border-neutral-300 hover:border-primary-400 p-8 sm:p-12 text-center cursor-pointer transition-colors relative group shadow-sm">
+                <input type="file" id="mergeFileInput" accept="application/pdf" multiple class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                <div class="flex flex-col items-center justify-center space-y-4">
+                    <div class="w-16 h-16 rounded-full bg-neutral-100 flex items-center justify-center text-neutral-400 group-hover:bg-primary-50 group-hover:text-primary-500 transition-colors">
+                        <span class="material-icons-round text-4xl">library_add</span>
+                    </div>
+                    <div>
+                        <p class="text-lg font-medium text-neutral-700 group-hover:text-primary-600 transition-colors">結合する複数のPDFファイルをドラッグ＆ドロップ</p>
+                        <p class="text-sm text-neutral-400 mt-1">または、ここをクリックしてまとめて選択 (複数可)</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 結合リスト & 設定 (ファイル1つ以上選択後に表示) -->
+            <div id="mergeWorkArea" class="hidden bg-white rounded-2xl border border-neutral-200 p-6 shadow-sm space-y-6 transition-all">
+                <div class="flex items-center justify-between border-b border-neutral-100 pb-3">
+                    <h3 class="font-semibold text-neutral-700 text-lg flex items-center">
+                        <span class="material-icons-round text-primary-500 mr-2">list</span>結合対象のファイルリスト
+                    </h3>
+                    <div class="flex items-center space-x-3">
+                        <button id="addMoreFilesBtn" class="text-xs text-primary-600 hover:text-primary-800 font-medium flex items-center space-x-1 py-1 px-2 hover:bg-primary-50 rounded-lg transition-colors relative">
+                            <input type="file" id="mergeAddMoreInput" accept="application/pdf" multiple class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                            <span class="material-icons-round text-sm">add</span>
+                            <span>ファイルを追加</span>
+                        </button>
+                        <button id="mergeResetBtn" class="text-xs text-red-500 hover:text-red-700 font-medium flex items-center space-x-1 py-1 px-2 hover:bg-red-50 rounded-lg transition-colors">
+                            <span class="material-icons-round text-sm">delete_sweep</span>
+                            <span>クリア</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- ファイルリストテーブル -->
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-sm text-neutral-600">
+                        <thead class="bg-neutral-50 text-neutral-500 uppercase text-xs">
+                            <tr>
+                                <th class="py-3 px-4 rounded-l-lg w-12 text-center">順序</th>
+                                <th class="py-3 px-4">ファイル名</th>
+                                <th class="py-3 px-4 text-center w-24">ページ数</th>
+                                <th class="py-3 px-4 text-center w-28">サイズ</th>
+                                <th class="py-3 px-4 rounded-r-lg w-32 text-center">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="mergeFileList" class="divide-y divide-neutral-100">
+                            <!-- 行はJavaScriptで動的生成されます -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- 結合の設定 -->
+                <div class="bg-neutral-50 p-4 rounded-xl border border-neutral-200 space-y-3">
+                    <div class="flex flex-col space-y-1">
+                        <label for="mergeOutputName" class="text-sm font-medium text-neutral-600">
+                            出力ファイル名（拡張子なし）
+                        </label>
+                        <input type="text" id="mergeOutputName" value="merged_document"
+                            class="max-w-md px-4 py-2.5 rounded-lg border border-neutral-300 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white shadow-sm text-sm" />
+                    </div>
+                </div>
+
+                <!-- 結合実行ボタン & 進捗表示 -->
+                <div class="pt-2">
+                    <button id="mergeProcessBtn" class="w-full bg-primary-500 hover:bg-primary-600 text-white font-medium py-3 px-6 rounded-xl shadow-md shadow-primary-100 hover:shadow-lg hover:shadow-primary-200 transition-all flex items-center justify-center space-x-2 text-base">
+                        <span class="material-icons-round">call_merge</span>
+                        <span id="mergeBtnText">PDFを結合・保存する</span>
+                    </button>
+
+                    <!-- 結合プログレスバー -->
+                    <div id="mergeProgressContainer" class="hidden mt-4 space-y-2">
+                        <div class="flex justify-between items-center text-xs font-semibold text-neutral-500">
+                            <span id="mergeProgressText">結合処理を準備中...</span>
+                            <span id="mergeProgressPercent">0%</span>
+                        </div>
+                        <div class="w-full bg-neutral-200 h-2 rounded-full overflow-hidden">
+                            <div id="mergeProgressBar" class="bg-primary-500 h-full rounded-full transition-all duration-300 w-0"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- フッター -->
+    <footer class="bg-white border-t border-neutral-200 py-6 mt-12 text-center text-xs text-neutral-400">
+        <div class="max-w-5xl mx-auto px-6 space-y-2">
+            <p>© 2026 PDF便利ツール. All rights reserved. すべての処理はブラウザ内のローカル環境で安全に行われます。</p>
+            <p>Powered by <a href="https://pdf-lib.js.org/" target="_blank" rel="noopener noreferrer" class="underline hover:text-neutral-600">pdf-lib.js</a></p>
+        </div>
+    </footer>
+
+
+    <!-- ==================== JavaScript ==================== -->
+    <script>
+        // Tab管理
+        let activeTab = 'split'; // 'split' or 'merge'
+        
+        const tabSplitBtn = document.getElementById('tabSplitBtn');
+        const tabMergeBtn = document.getElementById('tabMergeBtn');
+        const splitSection = document.getElementById('splitSection');
+        const mergeSection = document.getElementById('mergeSection');
+
+        // タブ切り替え
+        tabSplitBtn.addEventListener('click', () => {
+            switchTab('split');
+        });
+        tabMergeBtn.addEventListener('click', () => {
+            switchTab('merge');
+        });
+
+        function switchTab(tab) {
+            activeTab = tab;
+            closeMessage();
+            if (tab === 'split') {
+                tabSplitBtn.className = "px-5 py-2 text-sm font-medium rounded-lg transition-all flex items-center space-x-1 bg-white text-primary-700 shadow-sm";
+                tabMergeBtn.className = "px-5 py-2 text-sm font-medium rounded-lg transition-all flex items-center space-x-1 text-neutral-600 hover:text-neutral-800 hover:bg-neutral-200/50";
+                splitSection.classList.remove('hidden');
+                mergeSection.classList.add('hidden');
+            } else {
+                tabMergeBtn.className = "px-5 py-2 text-sm font-medium rounded-lg transition-all flex items-center space-x-1 bg-white text-primary-700 shadow-sm";
+                tabSplitBtn.className = "px-5 py-2 text-sm font-medium rounded-lg transition-all flex items-center space-x-1 text-neutral-600 hover:text-neutral-800 hover:bg-neutral-200/50";
+                mergeSection.classList.remove('hidden');
+                splitSection.classList.add('hidden');
+            }
+        }
+
+
+        // ==================== [A] 分割機能 ロジック ====================
+        let splitPdfBytes = null;
+        let splitFileNameVal = "";
+        let splitTotalPagesVal = 0;
+
+        const splitUploadArea = document.getElementById('splitUploadArea');
+        const splitFileInput = document.getElementById('splitFileInput');
+        const splitWorkArea = document.getElementById('splitWorkArea');
+        const splitResetBtn = document.getElementById('splitResetBtn');
+        const splitProcessBtn = document.getElementById('splitProcessBtn');
+        const splitBtnText = document.getElementById('splitBtnText');
+
+        const splitFileName = document.getElementById('splitFileName');
+        const splitTotalPages = document.getElementById('splitTotalPages');
+        const splitFileSize = document.getElementById('splitFileSize');
+
+        const splitModes = document.getElementsByName('splitMode');
+        const rangeInputContainer = document.getElementById('rangeInputContainer');
+        const rangeInput = document.getElementById('rangeInput');
+
+        const splitProgressContainer = document.getElementById('splitProgressContainer');
+        const splitProgressBar = document.getElementById('splitProgressBar');
+        const splitProgressText = document.getElementById('splitProgressText');
+        const splitProgressPercent = document.getElementById('splitProgressPercent');
+
+        // ドラッグ＆ドロップ (分割)
+        setupDragDrop(splitUploadArea, handleSplitFile);
+
+        splitFileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleSplitFile(e.target.files[0]);
+            }
+        });
+
+        async function handleSplitFile(file) {
+            if (file.type !== 'application/pdf') {
+                showMessage('PDF形式のファイルのみ対応しています。', 'error');
+                return;
+            }
+            try {
+                closeMessage();
+                splitFileNameVal = file.name;
+                splitPdfBytes = await file.arrayBuffer();
+
+                const pdfDoc = await PDFLib.PDFDocument.load(splitPdfBytes, { ignoreEncryption: true });
+                splitTotalPagesVal = pdfDoc.getPageCount();
+
+                if (splitTotalPagesVal === 0) {
+                    throw new Error("PDFのページ数が0です。");
+                }
+
+                splitFileName.textContent = splitFileNameVal;
+                splitTotalPages.textContent = splitTotalPagesVal;
+                splitFileSize.textContent = formatBytes(file.size);
+
+                rangeInput.placeholder = `例: 1-${splitTotalPagesVal}、1-3、5`;
+
+                splitUploadArea.classList.add('hidden');
+                splitWorkArea.classList.remove('hidden');
+            } catch (error) {
+                console.error(error);
+                showMessage('PDFファイルの読み込みに失敗しました。パスワード保護されているか、ファイルが破損している可能性があります。', 'error');
+                resetSplit();
+            }
+        }
+
+        splitModes.forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                if (e.target.value === 'range') {
+                    rangeInputContainer.classList.remove('hidden');
+                } else {
+                    rangeInputContainer.classList.add('hidden');
+                }
+            });
+        });
+
+        splitResetBtn.addEventListener('click', resetSplit);
+
+        function resetSplit() {
+            splitPdfBytes = null;
+            splitFileNameVal = "";
+            splitTotalPagesVal = 0;
+            splitFileInput.value = "";
+            rangeInput.value = "";
+            splitModes[0].checked = true;
+            rangeInputContainer.classList.add('hidden');
+
+            splitWorkArea.classList.add('hidden');
+            splitUploadArea.classList.remove('hidden');
+            hideSplitProgress();
+        }
+
+        function showSplitProgress() {
+            splitProgressContainer.classList.remove('hidden');
+            splitProcessBtn.disabled = true;
+            splitProcessBtn.classList.add('opacity-50', 'cursor-not-allowed');
+        }
+
+        function updateSplitProgress(percent, text) {
+            splitProgressBar.style.width = `${percent}%`;
+            splitProgressPercent.textContent = `${percent}%`;
+            splitProgressText.textContent = text;
+        }
+
+        function hideSplitProgress() {
+            splitProgressContainer.classList.add('hidden');
+            splitProgressBar.style.width = '0%';
+            splitProgressPercent.textContent = '0%';
+            splitProcessBtn.disabled = false;
+            splitProcessBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+        }
+
+        splitProcessBtn.addEventListener('click', async () => {
+            closeMessage();
+            if (!splitPdfBytes) return;
+
+            const mode = document.querySelector('input[name="splitMode"]:checked').value;
+            if (mode === 'every') {
+                await runSplitEveryPage();
+            } else {
+                await runSplitByRange();
+            }
+        });
+
+        async function runSplitEveryPage() {
+            showSplitProgress();
+            try {
+                const baseName = splitFileNameVal.replace(/\.pdf$/i, '');
+                const sourcePdfDoc = await PDFLib.PDFDocument.load(splitPdfBytes);
+                const total = sourcePdfDoc.getPageCount();
+
+                for (let i = 0; i < total; i++) {
+                    const progress = Math.round(((i + 1) / total) * 100);
+                    updateSplitProgress(progress, `${i + 1} / ${total} ページ目を分割処理中...`);
+
+                    const newPdfDoc = await PDFLib.PDFDocument.create();
+                    const [copiedPage] = await newPdfDoc.copyPages(sourcePdfDoc, [i]);
+                    newPdfDoc.addPage(copiedPage);
+
+                    const newPdfBytes = await newPdfDoc.save();
+                    downloadBlob(newPdfBytes, `${baseName}_page_${i + 1}.pdf`);
+
+                    await new Promise(resolve => setTimeout(resolve, 80));
+                }
+
+                updateSplitProgress(100, '完了しました！');
+                showMessage('すべてのページの分割・ダウンロードが完了しました。', 'success');
+            } catch (error) {
+                console.error(error);
+                showMessage('分割処理中にエラーが発生しました。', 'error');
+            } finally {
+                setTimeout(hideSplitProgress, 1500);
+            }
+        }
+
+        async function runSplitByRange() {
+            const rangeStr = rangeInput.value.trim();
+            if (!rangeStr) {
+                showMessage('ページ範囲を入力してください。', 'error');
+                return;
+            }
+
+            const pageIndexes = parseRange(rangeStr, splitTotalPagesVal);
+            if (!pageIndexes || pageIndexes.length === 0) {
+                showMessage('無効なページ範囲の指定です。入力規則をご確認ください。', 'error');
+                return;
+            }
+
+            showSplitProgress();
+            updateSplitProgress(20, 'PDFを読み込み中...');
+
+            try {
+                const baseName = splitFileNameVal.replace(/\.pdf$/i, '');
+                const sourcePdfDoc = await PDFLib.PDFDocument.load(splitPdfBytes);
+                const newPdfDoc = await PDFLib.PDFDocument.create();
+
+                const targetIndices = pageIndexes.map(p => p - 1);
+                updateSplitProgress(50, `${targetIndices.length}つのページを抽出しマージ中...`);
+
+                const copiedPages = await newPdfDoc.copyPages(sourcePdfDoc, targetIndices);
+                copiedPages.forEach(page => newPdfDoc.addPage(page));
+
+                updateSplitProgress(80, 'ファイルを書き出し中...');
+                const newPdfBytes = await newPdfDoc.save();
+
+                downloadBlob(newPdfBytes, `${baseName}_extracted.pdf`);
+
+                updateSplitProgress(100, '完了しました！');
+                showMessage('指定ページの抽出・ダウンロードが完了しました。', 'success');
+            } catch (error) {
+                console.error(error);
+                showMessage('抽出処理中にエラーが発生しました。', 'error');
+            } finally {
+                setTimeout(hideSplitProgress, 1500);
+            }
+        }
+
+
+        // ==================== [B] 結合（マージ）機能 ロジック ====================
+        let mergeFilesList = []; // 保持オブジェクト: { id, name, bytes, totalPages, size }
+        let mergeFileIdCounter = 0;
+
+        const mergeUploadArea = document.getElementById('mergeUploadArea');
+        const mergeFileInput = document.getElementById('mergeFileInput');
+        const mergeAddMoreInput = document.getElementById('mergeAddMoreInput');
+        const mergeWorkArea = document.getElementById('mergeWorkArea');
+        const mergeFileListTable = document.getElementById('mergeFileList');
+        const mergeResetBtn = document.getElementById('mergeResetBtn');
+        const mergeProcessBtn = document.getElementById('mergeProcessBtn');
+        const mergeOutputName = document.getElementById('mergeOutputName');
+
+        const mergeProgressContainer = document.getElementById('mergeProgressContainer');
+        const mergeProgressBar = document.getElementById('mergeProgressBar');
+        const mergeProgressText = document.getElementById('mergeProgressText');
+        const mergeProgressPercent = document.getElementById('mergeProgressPercent');
+
+        // ドラッグ＆ドロップ (結合)
+        setupDragDrop(mergeUploadArea, handleMergeFilesDrop);
+
+        mergeFileInput.addEventListener('change', async (e) => {
+            if (e.target.files.length > 0) {
+                await processMergeFiles(e.target.files);
+            }
+        });
+
+        mergeAddMoreInput.addEventListener('change', async (e) => {
+            if (e.target.files.length > 0) {
+                await processMergeFiles(e.target.files);
+            }
+        });
+
+        function handleMergeFilesDrop(file) {
+            // 単数ファイルドロップ時
+            processMergeFiles([file]);
+        }
+
+        // ドラッグ＆ドロップで複数ファイルを一度に処理するための追加ハンドラ
+        mergeUploadArea.addEventListener('drop', async (e) => {
+            e.preventDefault();
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                await processMergeFiles(files);
+            }
+        });
+
+        async function processMergeFiles(files) {
+            closeMessage();
+            let addedAny = false;
+
+            for (const file of files) {
+                if (file.type !== 'application/pdf') {
+                    showMessage('PDF形式ではないファイルが含まれていたため、スキップしました。', 'info');
+                    continue;
+                }
+
+                try {
+                    const bytes = await file.arrayBuffer();
+                    const pdfDoc = await PDFLib.PDFDocument.load(bytes, { ignoreEncryption: true });
+                    const pages = pdfDoc.getPageCount();
+
+                    mergeFilesList.push({
+                        id: ++mergeFileIdCounter,
+                        name: file.name,
+                        bytes: bytes,
+                        totalPages: pages,
+                        size: file.size
+                    });
+                    addedAny = true;
+                } catch (err) {
+                    console.error(err);
+                    showMessage(`${file.name}の読み込みに失敗したためスキップしました。保護されている可能性があります。`, 'error');
+                }
+            }
+
+            if (addedAny) {
+                renderMergeFileList();
+                mergeUploadArea.classList.add('hidden');
+                mergeWorkArea.classList.remove('hidden');
+            }
+        }
+
+        function renderMergeFileList() {
+            mergeFileListTable.innerHTML = '';
+
+            if (mergeFilesList.length === 0) {
+                mergeWorkArea.classList.add('hidden');
+                mergeUploadArea.classList.remove('hidden');
+                return;
+            }
+
+            mergeFilesList.forEach((file, index) => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-neutral-50/50 transition-colors';
+
+                tr.innerHTML = `
+                    <td class="py-3 px-4 text-center font-semibold text-neutral-400 font-mono">${index + 1}</td>
+                    <td class="py-3 px-4 font-medium text-neutral-700 truncate max-w-xs sm:max-w-md break-all" title="${file.name}">${file.name}</td>
+                    <td class="py-3 px-4 text-center text-neutral-600 font-mono">${file.totalPages}</td>
+                    <td class="py-3 px-4 text-center text-neutral-500 text-xs font-mono">${formatBytes(file.size)}</td>
+                    <td class="py-3 px-4 text-center">
+                        <div class="inline-flex items-center space-x-1">
+                            <button onclick="moveMergeItem(${index}, -1)" class="p-1 rounded hover:bg-neutral-200 text-neutral-500 hover:text-neutral-800 transition-colors" title="上に移動" ${index === 0 ? 'disabled style="opacity: 0.3;"' : ''}>
+                                <span class="material-icons-round text-lg leading-none">arrow_upward</span>
+                            </button>
+                            <button onclick="moveMergeItem(${index}, 1)" class="p-1 rounded hover:bg-neutral-200 text-neutral-500 hover:text-neutral-800 transition-colors" title="下に移動" ${index === mergeFilesList.length - 1 ? 'disabled style="opacity: 0.3;"' : ''}>
+                                <span class="material-icons-round text-lg leading-none">arrow_downward</span>
+                            </button>
+                            <button onclick="deleteMergeItem(${index})" class="p-1 rounded hover:bg-red-50 text-red-400 hover:text-red-600 transition-colors" title="削除">
+                                <span class="material-icons-round text-lg leading-none">delete</span>
+                            </button>
+                        </div>
+                    </td>
+                `;
+                mergeFileListTable.appendChild(tr);
+            });
+        }
+
+        window.moveMergeItem = function(index, direction) {
+            const newIndex = index + direction;
+            if (newIndex < 0 || newIndex >= mergeFilesList.length) return;
+
+            // 要素を入れ替え
+            const temp = mergeFilesList[index];
+            mergeFilesList[index] = mergeFilesList[newIndex];
+            mergeFilesList[newIndex] = temp;
+
+            renderMergeFileList();
+        };
+
+        window.deleteMergeItem = function(index) {
+            mergeFilesList.splice(index, 1);
+            renderMergeFileList();
+        };
+
+        mergeResetBtn.addEventListener('click', () => {
+            mergeFilesList = [];
+            mergeFileIdCounter = 0;
+            mergeFileInput.value = '';
+            mergeAddMoreInput.value = '';
+            renderMergeFileList();
+            hideMergeProgress();
+            closeMessage();
+        });
+
+        function showMergeProgress() {
+            mergeProgressContainer.classList.remove('hidden');
+            mergeProcessBtn.disabled = true;
+            mergeProcessBtn.classList.add('opacity-50', 'cursor-not-allowed');
+        }
+
+        function updateMergeProgress(percent, text) {
+            mergeProgressBar.style.width = `${percent}%`;
+            mergeProgressPercent.textContent = `${percent}%`;
+            mergeProgressText.textContent = text;
+        }
+
+        function hideMergeProgress() {
+            mergeProgressContainer.classList.add('hidden');
+            mergeProgressBar.style.width = '0%';
+            mergeProgressPercent.textContent = '0%';
+            mergeProcessBtn.disabled = false;
+            mergeProcessBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+        }
+
+        mergeProcessBtn.addEventListener('click', async () => {
+            closeMessage();
+            if (mergeFilesList.length < 2) {
+                showMessage('結合するには、少なくとも2つ以上のPDFファイルが必要です。', 'error');
+                return;
+            }
+
+            showMergeProgress();
+            updateMergeProgress(10, '結合の準備をしています...');
+
+            try {
+                const mergedPdf = await PDFLib.PDFDocument.create();
+                const totalFiles = mergeFilesList.length;
+
+                for (let i = 0; i < totalFiles; i++) {
+                    const fileObj = mergeFilesList[i];
+                    const progress = Math.round((i / totalFiles) * 70) + 10;
+                    updateMergeProgress(progress, `${fileObj.name} をマージ中 (${i + 1}/${totalFiles})...`);
+
+                    const docToMerge = await PDFLib.PDFDocument.load(fileObj.bytes);
+                    const pagesToCopy = docToMerge.getPageIndices();
+                    const copiedPages = await mergedPdf.copyPages(docToMerge, pagesToCopy);
+                    
+                    copiedPages.forEach(page => mergedPdf.addPage(page));
+                }
+
+                updateMergeProgress(85, '新規PDFデータを書き出し中...');
+                const mergedPdfBytes = await mergedPdf.save();
+
+                let outName = mergeOutputName.value.trim();
+                if (!outName) outName = 'merged_document';
+                if (!outName.toLowerCase().endsWith('.pdf')) {
+                    outName += '.pdf';
+                }
+
+                updateMergeProgress(95, 'ダウンロード中...');
+                downloadBlob(mergedPdfBytes, outName);
+
+                updateMergeProgress(100, '完了しました！');
+                showMessage('PDFファイルの結合・ダウンロードが完了しました。', 'success');
+            } catch (err) {
+                console.error(err);
+                showMessage('結合処理中にエラーが発生しました。読み込み不可能なファイルが含まれている場合があります。', 'error');
+            } finally {
+                setTimeout(hideMergeProgress, 1500);
+            }
+        });
+
+
+        // ==================== 共通ヘルパー関数 ====================
+
+        // ドラッグ＆ドロップ設定ユーティリティ
+        function setupDragDrop(areaElement, handleFileCallback) {
+            ['dragenter', 'dragover'].forEach(eventName => {
+                areaElement.addEventListener(eventName, (e) => {
+                    e.preventDefault();
+                    areaElement.classList.add('border-primary-500', 'bg-primary-50/30');
+                }, false);
+            });
+
+            ['dragleave', 'drop'].forEach(eventName => {
+                areaElement.addEventListener(eventName, (e) => {
+                    e.preventDefault();
+                    areaElement.classList.remove('border-primary-500', 'bg-primary-50/30');
+                }, false);
+            });
+
+            areaElement.addEventListener('drop', (e) => {
+                const dt = e.dataTransfer;
+                const files = dt.files;
+                if (files.length > 0 && activeTab === 'split') {
+                    handleFileCallback(files[0]);
+                }
+            });
+        }
+
+        // バイト数フォーマット
+        function formatBytes(bytes, decimals = 2) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const dm = decimals < 0 ? 0 : decimals;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+        }
+
+        // ページ範囲の解析
+        function parseRange(rangeStr, maxPage) {
+            const pages = new Set();
+            const parts = rangeStr.split(',');
+
+            for (let part of parts) {
+                part = part.trim();
+                if (!part) continue;
+
+                if (part.includes('-')) {
+                    const limits = part.split('-');
+                    if (limits.length !== 2) return null;
+                    const start = parseInt(limits[0].trim(), 10);
+                    const end = parseInt(limits[1].trim(), 10);
+
+                    if (isNaN(start) || isNaN(end) || start < 1 || end < 1 || start > end || start > maxPage || end > maxPage) {
+                        return null; 
+                    }
+
+                    for (let i = start; i <= end; i++) {
+                        pages.add(i);
+                    }
+                } else {
+                    const val = parseInt(part, 10);
+                    if (isNaN(val) || val < 1 || val > maxPage) {
+                        return null; 
+                    }
+                    pages.add(val);
+                }
+            }
+
+            return Array.from(pages).sort((a, b) => a - b);
+        }
+
+        // ローカルダウンロード実行
+        function downloadBlob(bytes, filename) {
+            const blob = new Blob([bytes], { type: 'application/pdf' });
+            const url = URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        // 共通メッセージ表示
+        function showMessage(text, type = 'info') {
+            messageContainer.classList.remove('hidden');
+            messageText.textContent = text;
+
+            messageBox.className = "p-4 rounded-xl flex items-start space-x-3 text-sm ";
+            
+            if (type === 'error') {
+                messageBox.classList.add('bg-rose-50', 'text-rose-800', 'border', 'border-rose-200');
+                messageIcon.textContent = 'error_outline';
+                messageIcon.className = "material-icons-round mt-0.5 text-rose-500";
+            } else if (type === 'success') {
+                messageBox.classList.add('bg-emerald-50', 'text-emerald-800', 'border', 'border-emerald-200');
+                messageIcon.textContent = 'check_circle_outline';
+                messageIcon.className = "material-icons-round mt-0.5 text-emerald-500";
+            } else {
+                messageBox.classList.add('bg-sky-50', 'text-sky-800', 'border', 'border-sky-200');
+                messageIcon.textContent = 'info';
+                messageIcon.className = "material-icons-round mt-0.5 text-sky-500";
+            }
+        }
+
+        window.closeMessage = function() {
+            messageContainer.classList.add('hidden');
+        };
+    </script>
+</body>
+</html>
